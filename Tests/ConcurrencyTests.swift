@@ -28,7 +28,7 @@ import Alamofire
 import XCTest
 
 @available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
-final class DataConcurrencyTests: BaseTestCase {
+final class DataRequestConcurrencyTests: BaseTestCase {
     func testThatDataTaskSerializesResponseUsingSerializer() async throws {
         // Given
         let session = stored(Session())
@@ -381,6 +381,37 @@ final class DataStreamConcurrencyTests: BaseTestCase {
         // Then
         XCTAssertTrue(request.isCancelled)
         XCTAssertNotNil(void)
+    }
+}
+
+@available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
+final class ClosureAPIConcurrencyTests: BaseTestCase {
+    func testThatDownloadProgressStreamReturnsProgress() async {
+        // Given
+        let session = stored(Session())
+
+        // When
+        let request = session.request(.get)
+        async let progress = request.downloadProgress().collect()
+        async let response = request.serializingDecodable(TestResponse.self).response
+        let values: (progresses: [Progress], response: AFDataResponse<TestResponse>) = await(progress, response)
+
+        // Then
+        XCTAssertNotNil(values.progresses.last)
+        XCTAssertTrue(values.progresses.last?.isFinished == true)
+        XCTAssertTrue(values.response.result.isSuccess)
+    }
+}
+
+@available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
+extension AsyncSequence {
+    func collect() async rethrows -> [Element] {
+        var elements: [Element] = []
+        for try await element in self {
+            elements.append(element)
+        }
+
+        return elements
     }
 }
 

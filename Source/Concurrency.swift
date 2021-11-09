@@ -90,11 +90,72 @@ public struct DataTask<Value> {
 }
 
 extension DispatchQueue {
-    fileprivate static let singleCompletionQueue = DispatchQueue(label: "org.alamofire.concurrencySingleCompletionQueue",
-                                                                 attributes: .concurrent)
+    fileprivate static let singleEventQueue = DispatchQueue(label: "org.alamofire.concurrencySingleEventQueue",
+                                                            attributes: .concurrent)
 
     fileprivate static var streamCompletionQueue: DispatchQueue {
         DispatchQueue(label: "org.alamofire.concurrencyStreamCompletionQueue")
+    }
+}
+
+@available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
+extension Request {
+    public typealias ProgressStream = AsyncStream<Progress>
+
+    public func uploadProgress(bufferingPolicy: ProgressStream.Continuation.BufferingPolicy = .unbounded) -> ProgressStream {
+        ProgressStream(bufferingPolicy: bufferingPolicy) { continuation in
+            continuation.onTermination = { @Sendable _ in }
+            uploadProgress(queue: .singleEventQueue) { progress in
+                guard continuation.onTermination != nil else { return }
+                continuation.yield(progress)
+                // Progress doesn't finish when total unit is unknown. How to handle?
+                // If stream is cancelled, what happens when we get another progress value?
+                if progress.isFinished {
+                    continuation.finish()
+                }
+            }
+        }
+    }
+
+    public func downloadProgress(bufferingPolicy: ProgressStream.Continuation.BufferingPolicy = .unbounded) -> ProgressStream {
+        ProgressStream(bufferingPolicy: bufferingPolicy) { continuation in
+            continuation.onTermination = { @Sendable _ in }
+            downloadProgress(queue: .singleEventQueue) { progress in
+                guard continuation.onTermination != nil else { return }
+                continuation.yield(progress)
+                // Progress doesn't finish when total unit is unknown. How to handle?
+                if progress.isFinished {
+                    continuation.finish()
+                }
+            }
+        }
+    }
+
+    public func urlRequests(bufferingPolicy: AsyncStream<URLRequest>.Continuation.BufferingPolicy = .unbounded) -> AsyncStream<URLRequest> {
+        AsyncStream(bufferingPolicy: bufferingPolicy) { continuation in
+            onURLRequestCreation(on: .singleEventQueue) { request in
+                continuation.yield(request)
+            }
+            // Need internal event for true completion?
+        }
+    }
+
+    public func urlSessionTasks(bufferingPolicy: AsyncStream<URLSessionTask>.Continuation.BufferingPolicy = .unbounded) -> AsyncStream<URLSessionTask> {
+        AsyncStream(bufferingPolicy: bufferingPolicy) { continuation in
+            onURLSessionTaskCreation(on: .singleEventQueue) { task in
+                continuation.yield(task)
+            }
+            // Need internal event for true completion?
+        }
+    }
+
+    public func cURLDescriptions(bufferingPolicy: AsyncStream<String>.Continuation.BufferingPolicy = .unbounded) -> AsyncStream<String> {
+        AsyncStream(bufferingPolicy: bufferingPolicy) { continuation in
+            cURLDescription(on: .singleEventQueue) { string in
+                continuation.yield(string)
+            }
+            // Need internal event for true completion?
+        }
     }
 }
 
@@ -176,7 +237,7 @@ extension DataRequest {
                                                                                 automaticallyCancelling shouldAutomaticallyCancel: Bool = false)
         -> DataTask<Serializer.SerializedObject> {
         dataTask(automaticallyCancelling: shouldAutomaticallyCancel) {
-            self.response(queue: .singleCompletionQueue,
+            self.response(queue: .singleEventQueue,
                           responseSerializer: serializer,
                           completionHandler: $0)
         }
@@ -331,7 +392,7 @@ extension DownloadRequest {
     /// - Returns: The `DownloadTask`.
     public func serialize<Serializer: DownloadResponseSerializerProtocol>(using serializer: Serializer) -> DownloadTask<Serializer.SerializedObject> {
         downloadTask {
-            self.response(queue: .singleCompletionQueue,
+            self.response(queue: .singleEventQueue,
                           responseSerializer: serializer,
                           completionHandler: $0)
         }
