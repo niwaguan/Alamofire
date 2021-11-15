@@ -30,14 +30,18 @@ public class Request {
     /// State of the `Request`, with managed transitions between states set when calling `resume()`, `suspend()`, or
     /// `cancel()` on the `Request`.
     public enum State {
+        /// 刚创建的状态
         /// Initial state of the `Request`.
         case initialized
+        /// 对应的task已经调用了resume
         /// `State` set when `resume()` is called. Any tasks created for the `Request` will have `resume()` called on
         /// them in this state.
         case resumed
+        /// 对应的task已经调用suspend
         /// `State` set when `suspend()` is called. Any tasks created for the `Request` will have `suspend()` called on
         /// them in this state.
         case suspended
+        ///
         /// `State` set when `cancel()` is called. Any tasks created for the `Request` will have `cancel()` called on
         /// them. Unlike `resumed` or `suspended`, once in the `cancelled` state, the `Request` can no longer transition
         /// to any other state.
@@ -529,17 +533,19 @@ public class Request {
     ///
     /// - Parameter closure: The closure containing the response serialization call.
     func appendResponseSerializer(_ closure: @escaping () -> Void) {
+        /// $mutableState是属性包装器的使用，这里是为了线程安全。具体的使用方法放在后面再说。
         $mutableState.write { mutableState in
+            /// 使用数组记录序列化器
             mutableState.responseSerializers.append(closure)
-
+            /// 若之前的序列化器都已经调用完毕，这里又添加了一个，需要重置状态到resumed
             if mutableState.state == .finished {
                 mutableState.state = .resumed
             }
-
+            /// 若之前的序列化器都执行完毕，需要处理本次添加的
             if mutableState.responseSerializerProcessingFinished {
                 underlyingQueue.async { self.processNextResponseSerializer() }
             }
-
+            /// resume 该请求
             if mutableState.state.canTransitionTo(.resumed) {
                 underlyingQueue.async { if self.delegate?.startImmediately == true { self.resume() } }
             }

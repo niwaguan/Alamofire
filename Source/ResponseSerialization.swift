@@ -189,21 +189,25 @@ extension DataRequest {
     /// - Returns:             The request.
     @discardableResult
     public func response(queue: DispatchQueue = .main, completionHandler: @escaping (AFDataResponse<Data?>) -> Void) -> Self {
+        /// 添加一个响应序列化器，后面的Closure就是对于的序列化操作
+        /// 添加的序列化器在系统回调`urlSession(_:task:didCompleteWithError:)`后会被执行
         appendResponseSerializer {
+            /// 直接使用data和error构建result
             // Start work that should be on the serialization queue.
             let result = AFResult<Data?>(value: self.data, error: self.error)
             // End work that should be on the serialization queue.
 
             self.underlyingQueue.async {
+                /// 构建response对象
                 let response = DataResponse(request: self.request,
                                             response: self.response,
                                             data: self.data,
                                             metrics: self.metrics,
                                             serializationDuration: 0,
                                             result: result)
-
+                /// 事件回调：已经解析响应
                 self.eventMonitor?.request(self, didParseResponse: response)
-
+                /// 添加一个所有序列化器完成后的回调，以便将本方法回调出去
                 self.responseSerializerDidComplete { queue.async { completionHandler(response) } }
             }
         }

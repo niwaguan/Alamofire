@@ -47,7 +47,7 @@ struct Endpoint {
 
     enum Host: String {
         case localhost = "127.0.0.1"
-        case httpBin = "httpbin.org"
+        case httpBin = "www.httpbin.org"
 
         func port(for scheme: Scheme) -> Int {
             switch self {
@@ -217,7 +217,7 @@ struct Endpoint {
 
     var scheme = Scheme.http
     var port: Int { host.port(for: scheme) }
-    var host = Host.localhost
+    var host = Host.httpBin
     var path = Path.method(.get)
     var method: HTTPMethod = .get
     var headers: HTTPHeaders = .init()

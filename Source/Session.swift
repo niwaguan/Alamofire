@@ -1046,41 +1046,50 @@ open class Session {
                                 convertible: URLRequestConvertible,
                                 shouldCreateTask: @escaping () -> Bool = { true })
     {
+        /// 条件预检
         dispatchPrecondition(condition: .onQueue(requestQueue))
 
         let initialRequest: URLRequest
 
         do {
+            /// URLRequestConvertible协议方法被调用，创建URLRequest
             initialRequest = try convertible.asURLRequest()
+            /// 验证请求是否合法，默认实现是GET方法通过body传送数据被认为不合法
             try initialRequest.validate()
         } catch {
+            /// 事件回调：合法性校验失败
             rootQueue.async { request.didFailToCreateURLRequest(with: error.asAFError(or: .createURLRequestFailed(error: error))) }
             return
         }
-
+        /// 事件回调：已经创建请求
         rootQueue.async { request.didCreateInitialURLRequest(initialRequest) }
-
+        /// 再次检查请求状态，取消就不再进行后续工作
         guard !request.isCancelled else { return }
-
+        /// 获取Request的适配器，会考虑单个Request级别和Session级别
         guard let adapter = adapter(for: request) else {
             guard shouldCreateTask() else { return }
+            /// 1.?
             rootQueue.async { self.didCreateURLRequest(initialRequest, for: request) }
             return
         }
-
+        
+        /// 默认情况下会走这里的逻辑，除非配置了interceptor
+        
         let adapterState = RequestAdapterState(requestID: request.id, session: self)
-
+        /// 适配Request，并进行后续处理
         adapter.adapt(initialRequest, using: adapterState) { result in
             do {
+                /// 获取适配后的Request
                 let adaptedRequest = try result.get()
                 try adaptedRequest.validate()
-
+                /// 事件回调：已经适配请求
                 self.rootQueue.async { request.didAdaptInitialRequest(initialRequest, to: adaptedRequest) }
 
                 guard shouldCreateTask() else { return }
-
+                // 1.?
                 self.rootQueue.async { self.didCreateURLRequest(adaptedRequest, for: request) }
             } catch {
+                /// 事件回调：适配请求失败
                 self.rootQueue.async { request.didFailToAdaptURLRequest(initialRequest, withError: .requestAdaptationFailed(error: error)) }
             }
         }
@@ -1090,13 +1099,15 @@ open class Session {
 
     func didCreateURLRequest(_ urlRequest: URLRequest, for request: Request) {
         dispatchPrecondition(condition: .onQueue(rootQueue))
-
+        /// 事件回调：已经创建URLRequest
         request.didCreateURLRequest(urlRequest)
-
+        /// 取消后直接返回
         guard !request.isCancelled else { return }
-
+        /// 创建task
         let task = request.task(for: urlRequest, using: session)
+        /// 记录 request->task映射
         requestTaskMap[request] = task
+        /// 事件回调：已经创建task
         request.didCreateTask(task)
 
         updateStatesForTask(task, request: request)
