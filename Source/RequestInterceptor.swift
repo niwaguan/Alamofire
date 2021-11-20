@@ -38,7 +38,10 @@ public struct RequestAdapterState {
 /// A type that can inspect and optionally adapt a `URLRequest` in some manner if necessary.
 public protocol RequestAdapter {
     /// Inspects and adapts the specified `URLRequest` in some manner and calls the completion handler with the Result.
-    ///
+    /// 通过urlRequest和session两个入参，来决定如何处理该请求。处理完的结果通过completion进行回调。例如：
+    /// 1. 我们修改该请求，然后回调 completion(.success(someRequest))。这样框架可以继续处理返回的Request
+    /// 2. 判断某些必要条件不成立，决定将该请求失败掉，可以回调 completion(.failure(someError))
+    /// 由于回调是通过closure进行的，这里也可以做异步操作 。
     /// - Parameters:
     ///   - urlRequest: The `URLRequest` to adapt.
     ///   - session:    The `Session` that will execute the `URLRequest`.
@@ -46,7 +49,7 @@ public protocol RequestAdapter {
     func adapt(_ urlRequest: URLRequest, for session: Session, completion: @escaping (Result<URLRequest, Error>) -> Void)
 
     /// Inspects and adapts the specified `URLRequest` in some manner and calls the completion handler with the Result.
-    ///
+    /// 和上一个方法类似，这里我们得到的入参更丰富了，多了requestID (RequestAdapterState是个结构体，包含了session和requestID)
     /// - Parameters:
     ///   - urlRequest: The `URLRequest` to adapt.
     ///   - state:      The `RequestAdapterState` associated with the `URLRequest`.
@@ -65,12 +68,16 @@ extension RequestAdapter {
 /// Outcome of determination whether retry is necessary.
 public enum RetryResult {
     /// Retry should be attempted immediately.
+    /// 立即重试
     case retry
     /// Retry should be attempted after the associated `TimeInterval`.
+    /// 在指定时间之后重试
     case retryWithDelay(TimeInterval)
     /// Do not retry.
+    /// 无需重试
     case doNotRetry
     /// Do not retry due to the associated `Error`.
+    /// 无需重试并报错
     case doNotRetryWithError(Error)
 }
 
@@ -103,7 +110,7 @@ public protocol RequestRetrier {
     /// This operation is fully asynchronous. Any amount of time can be taken to determine whether the request needs
     /// to be retried. The one requirement is that the completion closure is called to ensure the request is properly
     /// cleaned up after.
-    ///
+    /// 在请求出错后，通过该方法决定是否需要重试。我们可以有4种处理方式（来自RetryResult枚举）
     /// - Parameters:
     ///   - request:    `Request` that failed due to the provided `Error`.
     ///   - session:    `Session` that produced the `Request`.

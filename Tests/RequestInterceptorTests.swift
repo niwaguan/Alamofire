@@ -587,6 +587,15 @@ final class InterceptorRequestTests: BaseTestCase {
         XCTAssertEqual(interceptor.retryCalledCount, 2, "retry() should be called twice.")
         XCTAssertEqual(interceptor.retries, [.retryWithDelay(0.1), .doNotRetry], "RetryResults should retryWithDelay, doNotRetry")
     }
+    func testCumstom() {
+        class XX: RequestAdapter {
+            func adapt(_ urlRequest: URLRequest, for session: Session, completion: @escaping (Result<URLRequest, Error>) -> Void) {
+                var ret = urlRequest
+                ret.headers.add(name: "sign", value: "xxx")
+                completion(.success(ret))
+            }
+        }
+    }
 }
 
 // MARK: - Static Accessors
