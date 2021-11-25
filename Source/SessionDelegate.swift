@@ -23,12 +23,14 @@
 //
 
 import Foundation
-
+/// 实现了URLSessionDelegate代理
 /// Class which implements the various `URLSessionDelegate` methods to connect various Alamofire features.
 open class SessionDelegate: NSObject {
+    /// 文件管理器，主要负责下载请求的文件操作
     private let fileManager: FileManager
-
+    /// 依赖项，参考 SessionStateProvider
     weak var stateProvider: SessionStateProvider?
+    /// 事件监听器
     var eventMonitor: EventMonitor?
 
     /// Creates an instance from the given `FileManager`.
@@ -53,17 +55,24 @@ open class SessionDelegate: NSObject {
         return provider.request(for: task) as? R
     }
 }
-
+/// 定义SessionDelegate的必须依赖
 /// Type which provides various `Session` state values.
 protocol SessionStateProvider: AnyObject {
+    /// https证书校验器
     var serverTrustManager: ServerTrustManager? { get }
+    /// 重定向处理器
     var redirectHandler: RedirectHandler? { get }
+    /// 缓存处理器
     var cachedResponseHandler: CachedResponseHandler? { get }
-
+    /// task到request的映射
     func request(for task: URLSessionTask) -> Request?
+    /// 统计信息的报告
     func didGatherMetricsForTask(_ task: URLSessionTask)
+    /// 任务完成报告
     func didCompleteTask(_ task: URLSessionTask, completion: @escaping () -> Void)
+    /// task级别的证书映射
     func credential(for task: URLSessionTask, in protectionSpace: URLProtectionSpace) -> URLCredential?
+    /// 通知请求取消
     func cancelRequestsForSessionInvalidation(with error: Error?)
 }
 
@@ -212,11 +221,13 @@ extension SessionDelegate: URLSessionTaskDelegate {
     }
 
     open func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        // 回调事件监听器（Session级别的监听）
         eventMonitor?.urlSession(session, task: task, didCompleteWithError: error)
-
+        // 使用SessionStateProvider获取task对应的Request
         let request = stateProvider?.request(for: task)
-
+        // 通知Session该task已经完成。
         stateProvider?.didCompleteTask(task) {
+            // 此时，Session已经将task记录从requestTaskMap中删除。之后回调到request中
             request?.didCompleteTask(task, with: error.map { $0.asAFError(or: .sessionTaskFailed(error: $0)) })
         }
     }

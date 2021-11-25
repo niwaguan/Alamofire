@@ -467,13 +467,13 @@ public class Request {
     ///            value is ignored.
     func didCompleteTask(_ task: URLSessionTask, with error: AFError?) {
         dispatchPrecondition(condition: .onQueue(underlyingQueue))
-
+        // 记录错误
         self.error = self.error ?? error
-
+        // 执行所以的验证器（通过DataRequest.validate(_:)添加）
         validators.forEach { $0() }
-
+        // 通知监听器（Request级别）
         eventMonitor?.request(self, didCompleteTask: task, with: error)
-
+        // 进retry流程
         retryOrFinish(error: self.error)
     }
 
@@ -494,15 +494,18 @@ public class Request {
     /// - Parameter error: The possible `AFError` which may trigger retry.
     func retryOrFinish(error: AFError?) {
         dispatchPrecondition(condition: .onQueue(underlyingQueue))
-
+        // 没有错误的情况下，直接完成
         guard let error = error, let delegate = delegate else { finish(); return }
 
         delegate.retryResult(for: self, dueTo: error) { retryResult in
             switch retryResult {
+            // 不重试，直接完成
             case .doNotRetry:
                 self.finish()
+            // 不重试，会带有错误
             case let .doNotRetryWithError(retryError):
                 self.finish(error: retryError.asAFError(orFailWith: "Received retryError was not already AFError"))
+            // 进行重试 - 通过delegate（Session）进行
             case .retry, .retryWithDelay:
                 delegate.retryRequest(self, withDelay: retryResult.delay)
             }
@@ -514,16 +517,15 @@ public class Request {
     /// - Parameter error: The possible `Error` with which the instance will finish.
     func finish(error: AFError? = nil) {
         dispatchPrecondition(condition: .onQueue(underlyingQueue))
-
+        // 已经处于完成状态，直接返回
         guard !$mutableState.isFinishing else { return }
-
+        // 记录完成状态
         $mutableState.isFinishing = true
-
+        // 记录错误
         if let error = error { self.error = error }
-
-        // Start response handlers
+        // 处理响应序列化器，进行数据解析
         processNextResponseSerializer()
-
+        // 通知监听器
         eventMonitor?.requestDidFinish(self)
     }
 
@@ -1038,17 +1040,18 @@ extension Request {
 
 /// Protocol abstraction for `Request`'s communication back to the `SessionDelegate`.
 public protocol RequestDelegate: AnyObject {
+    /// 获取Session的配置，用于生成cURL命令
     /// `URLSessionConfiguration` used to create the underlying `URLSessionTask`s.
     var sessionConfiguration: URLSessionConfiguration { get }
-
+    /// 是否应该立即发起请求。默认true。在request.responseXXX的时候会根据这个参数觉得是否resume这个request
     /// Determines whether the `Request` should automatically call `resume()` when adding the first response handler.
     var startImmediately: Bool { get }
-
+    /// 执行清理操作。如：下载完成后移除下载文件
     /// Notifies the delegate the `Request` has reached a point where it needs cleanup.
     ///
     /// - Parameter request: The `Request` to cleanup after.
     func cleanup(after request: Request)
-
+    /// request出错了，请求对于错误的处理方式
     /// Asynchronously ask the delegate whether a `Request` will be retried.
     ///
     /// - Parameters:
@@ -1056,7 +1059,7 @@ public protocol RequestDelegate: AnyObject {
     ///   - error:      `Error` which produced the failure.
     ///   - completion: Closure taking the `RetryResult` for evaluation.
     func retryResult(for request: Request, dueTo error: AFError, completion: @escaping (RetryResult) -> Void)
-
+    /// 对于出错的request，触发重试
     /// Asynchronously retry the `Request`.
     ///
     /// - Parameters:

@@ -25,41 +25,6 @@
 import Alamofire
 import UIKit
 
-/// 负责向请求中添加自定义的签名请求头
-private
-class SignRequestInterceptor: RequestInterceptor {
-    
-    // MARK: - RequestAdapter
-    
-    func adapt(_ urlRequest: URLRequest, using state: RequestAdapterState, completion: @escaping (Result<URLRequest, Error>) -> Void) {
-        let request = sign(request: urlRequest)
-        completion(.success(request))
-    }
-    
-    func adapt(_ urlRequest: URLRequest, for session: Session, completion: @escaping (Result<URLRequest, Error>) -> Void) {
-        let request = sign(request: urlRequest)
-        completion(.success(request))
-    }
-    
-    // MARK: - RequestRetrier
-    
-    func retry(_ request: Request, for session: Session, dueTo error: Error, completion: @escaping (RetryResult) -> Void) {
-        completion(.retry)
-    }
-    
-    // MARK: -
-    
-    /// 模拟签名请求，使用url作为签名内容，便于观察
-    private func sign(request: URLRequest) -> URLRequest {
-        guard let urlString = request.url?.absoluteString else {
-            return request
-        }
-        var retRequest = request
-        retRequest.headers.add(name: "X-SIGN", value: urlString)
-        return retRequest
-    }
-}
-
 class MasterViewController: UITableViewController {
     // MARK: - Properties
 
@@ -97,19 +62,18 @@ class MasterViewController: UITableViewController {
                     return session.request("https://httpbin.org/get")
                 case "POST":
                     detailViewController.segueIdentifier = "POST"
-//                    return session.request("https://httpbin.org/post", method: .post)
-                    return AF.request("https://httpbin.org/post", interceptor: SignRequestInterceptor())
+                    return AF.request("https://httpbin.org/post", method: .post, interceptor: SignRequestInterceptor())
                 case "PUT":
                     detailViewController.segueIdentifier = "PUT"
-                    return session.request("https://httpbin.org/put", method: .put)
+                    return AF.request("https://httpbin.org/put", method: .put)
                 case "DELETE":
                     detailViewController.segueIdentifier = "DELETE"
-                    return session.request("https://httpbin.org/delete", method: .delete)
+                    return AF.request("https://httpbin.org/delete", method: .delete)
                 case "DOWNLOAD":
                     detailViewController.segueIdentifier = "DOWNLOAD"
                     let destination = DownloadRequest.suggestedDownloadDestination(for: .cachesDirectory,
                                                                                    in: .userDomainMask)
-                    return session.download("https://httpbin.org/stream/1", to: destination)
+                    return AF.download("https://httpbin.org/stream/1", to: destination)
                 default:
                     return nil
                 }

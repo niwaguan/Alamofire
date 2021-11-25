@@ -1180,22 +1180,28 @@ open class Session {
 // MARK: - RequestDelegate
 
 extension Session: RequestDelegate {
+    /// 直接返回session（URLSession）的配置
     public var sessionConfiguration: URLSessionConfiguration {
         session.configuration
     }
-
+    /// 直接返回session（Session）的属性startRequestsImmediately
     public var startImmediately: Bool { startRequestsImmediately }
-
+    /// 清理时，将该Request从活动的请求记录中删除
     public func cleanup(after request: Request) {
         activeRequests.remove(request)
     }
-
+    
+    /// 决定如何处理已经出错的请求
+    /// 1. 未能获取到请求重试器：直接回调不再重试
+    /// 2. 获取到请求重试器：根据请求重试器的结果处理：
+    /// a: 重试器返回了错误：回调包装后的错误（AFError）
+    /// b: 其他：直接回调
     public func retryResult(for request: Request, dueTo error: AFError, completion: @escaping (RetryResult) -> Void) {
         guard let retrier = retrier(for: request) else {
             rootQueue.async { completion(.doNotRetry) }
             return
         }
-
+        // 这里会调用我们的重试器
         retrier.retry(request, for: self, dueTo: error) { retryResult in
             self.rootQueue.async {
                 guard let retryResultError = retryResult.error else { completion(retryResult); return }
@@ -1205,16 +1211,18 @@ extension Session: RequestDelegate {
             }
         }
     }
-
+    /// 重试一个request。
     public func retryRequest(_ request: Request, withDelay timeDelay: TimeInterval?) {
         rootQueue.async {
             let retry: () -> Void = {
+                // 取消的request不再重试
                 guard !request.isCancelled else { return }
-
+                // 准备阶段：记录重试次数、重置各种进度
                 request.prepareForRetry()
+                // 请求的配置阶段
                 self.perform(request)
             }
-
+            // 若存在延迟，通过gcd执行；否则直接触发重试
             if let retryDelay = timeDelay {
                 self.rootQueue.after(retryDelay) { retry() }
             } else {
@@ -1227,45 +1235,41 @@ extension Session: RequestDelegate {
 // MARK: - SessionStateProvider
 
 extension Session: SessionStateProvider {
+    /// 通过task获取request，直接从requestTaskMap类字典结构中取值
     func request(for task: URLSessionTask) -> Request? {
         dispatchPrecondition(condition: .onQueue(rootQueue))
-
         return requestTaskMap[task]
     }
-
-    func didGatherMetricsForTask(_ task: URLSessionTask) {
-        dispatchPrecondition(condition: .onQueue(rootQueue))
-
-        let didDisassociate = requestTaskMap.disassociateIfNecessaryAfterGatheringMetricsForTask(task)
-
-        if didDisassociate {
-            waitingCompletions[task]?()
-            waitingCompletions[task] = nil
-        }
-    }
-
+    /// 在task完成之后，在判断收集到统计信息后，直接回调completion。否则使用waitingCompletions进行收集
     func didCompleteTask(_ task: URLSessionTask, completion: @escaping () -> Void) {
         dispatchPrecondition(condition: .onQueue(rootQueue))
-
+        // 只有在统计信息已经收集才会返回true
         let didDisassociate = requestTaskMap.disassociateIfNecessaryAfterCompletingTask(task)
-
         if didDisassociate {
             completion()
         } else {
             waitingCompletions[task] = completion
         }
     }
-
+    /// 收集到统计信息，判断task完成后，调用waitingCompletions记录的回调
+    func didGatherMetricsForTask(_ task: URLSessionTask) {
+        dispatchPrecondition(condition: .onQueue(rootQueue))
+        // 只有在task完成后才会返回true
+        let didDisassociate = requestTaskMap.disassociateIfNecessaryAfterGatheringMetricsForTask(task)
+        if didDisassociate {
+            waitingCompletions[task]?()
+            waitingCompletions[task] = nil
+        }
+    }
+    /// 获取Request级别的认证信息
     func credential(for task: URLSessionTask, in protectionSpace: URLProtectionSpace) -> URLCredential? {
         dispatchPrecondition(condition: .onQueue(rootQueue))
-
         return requestTaskMap[task]?.credential ??
             session.configuration.urlCredentialStorage?.defaultCredential(for: protectionSpace)
     }
-
+    /// Session失效时，将请求都失效掉
     func cancelRequestsForSessionInvalidation(with error: Error?) {
         dispatchPrecondition(condition: .onQueue(rootQueue))
-
         requestTaskMap.requests.forEach { $0.finish(error: AFError.sessionInvalidated(error: error)) }
     }
 }

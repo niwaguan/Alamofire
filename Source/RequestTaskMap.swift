@@ -23,7 +23,7 @@
 //
 
 import Foundation
-
+/// 记录`URLSessionTask`和 `Request`之间的一对一映射
 /// A type that maintains a two way, one to one map of `URLSessionTask`s to `Request`s.
 struct RequestTaskMap {
     private typealias Events = (completed: Bool, metricsGathered: Bool)
@@ -111,29 +111,36 @@ struct RequestTaskMap {
 
         return taskEvents.isEmpty
     }
-
+    
+    /// 在收集到统计信息后调用
     mutating func disassociateIfNecessaryAfterGatheringMetricsForTask(_ task: URLSessionTask) -> Bool {
         guard let events = taskEvents[task] else {
             fatalError("RequestTaskMap consistency error: no events corresponding to task found.")
         }
 
         switch (events.completed, events.metricsGathered) {
+        // 统计信息已经完成，不应该再次进入该方法
         case (_, true): fatalError("RequestTaskMap consistency error: duplicate metricsGatheredForTask call.")
+        // task未完成，统计信息未收集。此时标记task的统计信息以收集
         case (false, false): taskEvents[task] = (completed: false, metricsGathered: true); return false
+        // task已经完成，统计信息未收集。此时可以直接移除task记录
         case (true, false): self[task] = nil; return true
         }
     }
-
+    
+    /// 在task完成后调用，标记状态
     mutating func disassociateIfNecessaryAfterCompletingTask(_ task: URLSessionTask) -> Bool {
         guard let events = taskEvents[task] else {
             fatalError("RequestTaskMap consistency error: no events corresponding to task found.")
         }
 
         switch (events.completed, events.metricsGathered) {
+        // 已经完成的task，不应该再次进入该方法
         case (true, _): fatalError("RequestTaskMap consistency error: duplicate completionReceivedForTask call.")
         #if os(Linux) // Linux doesn't gather metrics, so unconditionally remove the reference and return true.
         default: self[task] = nil; return true
         #else
+        // task没有完成，统计信息未收集。此时标task务完成
         case (false, false):
             if #available(macOS 10.12, iOS 10, watchOS 7, tvOS 10, *) {
                 taskEvents[task] = (completed: true, metricsGathered: false); return false
@@ -141,6 +148,7 @@ struct RequestTaskMap {
                 // watchOS < 7 doesn't gather metrics, so unconditionally remove the reference and return true.
                 self[task] = nil; return true
             }
+        // task没有完成，统计信息已经收集。此时直接移除该task记录
         case (false, true):
             self[task] = nil; return true
         #endif
