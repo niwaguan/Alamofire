@@ -34,7 +34,7 @@ class MasterViewController: UITableViewController {
 
     private var reachability: NetworkReachabilityManager!
     
-    private let session = Session(interceptor: SignRequestInterceptor())
+    private let session = Session(interceptor: RetryPolicy(retryLimit: 10))
 
     // MARK: - View Lifecycle
 

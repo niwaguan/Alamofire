@@ -309,7 +309,9 @@ open class RetryPolicy: RequestInterceptor {
                     for session: Session,
                     dueTo error: Error,
                     completion: @escaping (RetryResult) -> Void) {
+        // 判断重试次数以及其他3个条件
         if request.retryCount < retryLimit, shouldRetry(request: request, dueTo: error) {
+            // 需要重试时，计算重试间隔
             completion(.retryWithDelay(pow(Double(exponentialBackoffBase), Double(request.retryCount)) * exponentialBackoffScale))
         } else {
             completion(.doNotRetry)
@@ -324,16 +326,18 @@ open class RetryPolicy: RequestInterceptor {
     ///
     /// - Returns:     `Bool` determining whether or not to retry the `Request`.
     open func shouldRetry(request: Request, dueTo error: Error) -> Bool {
+        // 判断请求方法是否支持重试
         guard let httpMethod = request.request?.method, retryableHTTPMethods.contains(httpMethod) else { return false }
-
+        // 判断响应状态码是否支持重试
         if let statusCode = request.response?.statusCode, retryableHTTPStatusCodes.contains(statusCode) {
             return true
         } else {
+            // 判断系统状态码是否支持重试
             let errorCode = (error as? URLError)?.code
             let afErrorCode = (error.asAFError?.underlyingError as? URLError)?.code
 
             guard let code = errorCode ?? afErrorCode else { return false }
-
+            // 6. retryableURLErrorCodes
             return retryableURLErrorCodes.contains(code)
         }
     }
