@@ -23,7 +23,7 @@
 //
 
 import Foundation
-
+/// 代表可以转换成URL的类型
 /// Types adopting the `URLConvertible` protocol can be used to construct `URL`s, which can then be used to construct
 /// `URLRequests`.
 public protocol URLConvertible {
@@ -65,6 +65,7 @@ extension URLComponents: URLConvertible {
 
 // MARK: -
 
+/// 代表可以转换成URLRequest的类型
 /// Types adopting the `URLRequestConvertible` protocol can be used to safely construct `URLRequest`s.
 public protocol URLRequestConvertible {
     /// Returns a `URLRequest` or throws if an `Error` was encountered.

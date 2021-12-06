@@ -27,6 +27,8 @@ import Foundation
 /// A dictionary of parameters to apply to a `URLRequest`.
 public typealias Parameters = [String: Any]
 
+/// 编码器，将参数编码至URLRequest中。
+/// 注意：参数是字典类型。
 /// A type used to define how a set of parameters are applied to a `URLRequest`.
 public protocol ParameterEncoding {
     /// Creates a `URLRequest` by encoding parameters and applying them on the passed request.

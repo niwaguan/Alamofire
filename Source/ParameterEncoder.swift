@@ -24,6 +24,8 @@
 
 import Foundation
 
+/// 编码器，将参数编码至URLRequest中。
+/// 注意：该方法为泛型方法，参数要求为可编码类型。
 /// A type that can encode any `Encodable` type into a `URLRequest`.
 public protocol ParameterEncoder {
     /// Encode the provided `Encodable` parameters into `request`.
