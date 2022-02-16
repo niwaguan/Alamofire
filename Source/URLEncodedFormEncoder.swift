@@ -352,6 +352,8 @@ public final class URLEncodedFormEncoder {
     }
 
     func encode(_ value: Encodable) throws -> URLEncodedFormComponent {
+        // 遵循Encodable的结构，默认以Key-Value存储在上下文中。
+        // 所以，此时上下文存储了一个空的对象
         let context = URLEncodedFormContext(.object([]))
         let encoder = _URLEncodedFormEncoder(context: context,
                                              boolEncoding: boolEncoding,
@@ -459,6 +461,10 @@ final class URLEncodedFormContext {
     }
 }
 
+/// 代表了一个Encodable的节点。节点的形式可能是：
+/// 1. 字符串
+/// 2. 数组，元素还可能是节点
+/// 3. 对象，多个(key-value)键值对存储在数组中
 enum URLEncodedFormComponent {
     typealias Object = [(key: String, value: URLEncodedFormComponent)]
 
@@ -494,19 +500,30 @@ enum URLEncodedFormComponent {
     }
 
     /// Recursive backing method to `set(to:at:)`.
+    /// encode<T>(_ value: T) throws where T: Encodable最终会通过该方法存储数据到context中
+    ///
     private func set(_ context: inout URLEncodedFormComponent, to value: URLEncodedFormComponent, at path: [CodingKey]) {
+        print("在结构：'\(context.asString)'中使用键\(path.asString)添加'\(value.asString)'")
+        // 根对象
         guard !path.isEmpty else {
             context = value
             return
         }
-
+        // 每次从path中取出第一个，作为当前的路径(记为end)
+        // 处理对应的值(记为child)
         let end = path[0]
         var child: URLEncodedFormComponent
+        // 下面是处理值的过程
         switch path.count {
+        // 若路径只有一级，value就是当前需要处理的值
         case 1:
             child = value
+        // 若路径大于一级，需要递归处理每一级。等递归返回时，
+        // child的值也就处理完成了
         case 2...:
+            // 数组结构。因为键是以数字生成的
             if let index = end.intValue {
+                // 尝试获取数组结构
                 let array = context.array ?? []
                 if array.count > index {
                     child = array[index]
@@ -514,13 +531,18 @@ enum URLEncodedFormComponent {
                     child = .array([])
                 }
                 set(&child, to: value, at: Array(path[1...]))
-            } else {
+            }
+            // 对象结构
+            else {
                 child = context.object?.first { $0.key == end.stringValue }?.value ?? .object(.init())
                 set(&child, to: value, at: Array(path[1...]))
             }
         default: fatalError("Unreachable")
         }
-
+        // 在值处理完成后，需要确定当前上下文的结构，
+        // 并根据结构来存储上面处理过的值。
+        
+        // 数组结构。
         if let index = end.intValue {
             if var array = context.array {
                 if array.count > index {
@@ -532,21 +554,47 @@ enum URLEncodedFormComponent {
             } else {
                 context = .array([child])
             }
-        } else {
+        }
+        // 对象结构
+        else {
+            // 找到了对象结构
             if var object = context.object {
+                // 在对象结构中差值指定的键end
                 if let index = object.firstIndex(where: { $0.key == end.stringValue }) {
                     object[index] = (key: end.stringValue, value: child)
                 } else {
                     object.append((key: end.stringValue, value: child))
                 }
+                // 记录最新结果
                 context = .object(object)
-            } else {
+            }
+            // 没找到就初始化新的
+            else {
                 context = .object([(key: end.stringValue, value: child)])
             }
         }
     }
+    
+    var asString: String {
+        switch self {
+        case .string(let string):
+            return string
+        case .array(let array):
+            return "[\(array.map(\.asString).joined(separator: ","))]"
+        case .object(let object):
+            let coms = object.map { (key: String, value: URLEncodedFormComponent) -> String in
+                "\(key): \(value.asString)"
+            }
+            return "{ \(coms.joined(separator: ",")) }"
+        }
+    }
 }
 
+extension Array where Element == CodingKey {
+    var asString: String {
+        return self.map(\.stringValue).joined(separator: "->")
+    }
+}
 struct AnyCodingKey: CodingKey, Hashable {
     let stringValue: String
     let intValue: Int?
@@ -899,7 +947,10 @@ final class URLEncodedFormSerializer {
         self.spaceEncoding = spaceEncoding
         self.allowedCharacters = allowedCharacters
     }
-
+    /// 对URLEncodedFormComponent.Object类型进行序列化
+    /// 1. 遍历每一个key-value对其进行序列化
+    /// 2. 按需排序
+    /// 3. 拼接输出
     func serialize(_ object: URLEncodedFormComponent.Object) -> String {
         var output: [String] = []
         for (key, component) in object {
@@ -910,7 +961,8 @@ final class URLEncodedFormSerializer {
 
         return output.joinedWithAmpersands()
     }
-
+    /// 对URLEncodedFormComponent类型进行序列化
+    /// 根据URLEncodedFormComponent具体值的类型，分别进行序列化
     func serialize(_ component: URLEncodedFormComponent, forKey key: String) -> String {
         switch component {
         case let .string(string): return "\(escape(keyEncoding.encode(key)))=\(escape(string))"
@@ -918,7 +970,8 @@ final class URLEncodedFormSerializer {
         case let .object(object): return serialize(object, forKey: key)
         }
     }
-
+    /// 使用key对URLEncodedFormComponent.Object类型进行序列化
+    /// {a: {x: 1, y: 2}} => a[x]=1&a[y]=2
     func serialize(_ object: URLEncodedFormComponent.Object, forKey key: String) -> String {
         var segments: [String] = object.map { subKey, value in
             let keyPath = "[\(subKey)]"
@@ -928,7 +981,9 @@ final class URLEncodedFormSerializer {
 
         return segments.joinedWithAmpersands()
     }
-
+    /// 使用key对[URLEncodedFormComponent]进行序列化
+    /// a: [1, 2] => a[]=1&a[]=2 || a=1&a=2
+    /// 上面的两种格式是由arrayEncoding确定
     func serialize(_ array: [URLEncodedFormComponent], forKey key: String) -> String {
         var segments: [String] = array.map { component in
             let keyPath = arrayEncoding.encode(key)
@@ -938,7 +993,7 @@ final class URLEncodedFormSerializer {
 
         return segments.joinedWithAmpersands()
     }
-
+    /// 从字符串中剔除不允许的字符，主要去除URL中不能包含的字符
     func escape(_ query: String) -> String {
         var allowedCharactersWithSpace = allowedCharacters
         allowedCharactersWithSpace.insert(charactersIn: " ")
