@@ -94,6 +94,7 @@ class DetailViewController: UITableViewController {
                 switch segueIdentifier {
                 case "GET", "POST", "PUT", "DELETE":
                     if case let .success(value) = result { self.body = value }
+                    if case let .failure(reason) = result { self.body = reason.errorDescription }
                 case "DOWNLOAD":
                     self.body = self.downloadedBodyString()
                 default:

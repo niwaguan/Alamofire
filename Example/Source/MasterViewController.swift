@@ -34,7 +34,10 @@ class MasterViewController: UITableViewController {
 
     private var reachability: NetworkReachabilityManager!
     
-    private let session = Session(interceptor: RetryPolicy(retryLimit: 10))
+    private let endpoint = "https://httpbin.org/get"
+    private let session = Session(eventMonitors: [DumpTrustMoniter()])
+    private let secretSession = Session(serverTrustManager: ServerTrustManager(allHostsMustBeEvaluated: true, evaluators: ["httpbin.org" : PinnedCertificatesTrustEvaluator(certificates: Bundle.main.af.certificates, acceptSelfSignedCertificates: false, performDefaultValidation: true, validateHost: true)]), eventMonitors: [DumpTrustMoniter()]);
+    
 
     // MARK: - View Lifecycle
 
@@ -59,7 +62,10 @@ class MasterViewController: UITableViewController {
                 switch segue.identifier! {
                 case "GET":
                     detailViewController.segueIdentifier = "GET"
-                    return session.request("https://httpbin.org/get")
+                    return secretSession.request(endpoint)
+                case "GETWITHCER":
+                    detailViewController.segueIdentifier = "GET"
+                    return secretSession.request(endpoint)
                 case "POST":
                     detailViewController.segueIdentifier = "POST"
                     return AF.request("https://httpbin.org/post", method: .post, interceptor: SignRequestInterceptor())
